@@ -24,7 +24,7 @@ class slaveI2C {
     slaveI2C(int slaveAddress);
     static void update_dataOut(int dataOut);
     static void update_dataIn(int dataIn);
-};
+}; 
 
 int slaveI2C::_dataOut = 0;  // provide definition for static member varaibale.
 int slaveI2C::_dataIn = 0;   // provide definition for static member varaibale.
@@ -42,20 +42,16 @@ void slaveI2C::update_dataOut(int dataOut) {
 void slaveI2C::update_dataIn(int dataIn) {
   _dataIn = dataIn;
 }
-
 int slaveI2C::get_dataOut() {
   return _dataOut;
 }
-
 int slaveI2C::get_dataIn() {
   return _dataIn;
 }
-
 void slaveI2C::slaveWriter()  {
   int dO = slaveI2C::get_dataOut();
   Wire.write(dO);
 }
-
 void slaveI2C::slaveReader(int howMany) {
   for (int i = 0; i < howMany; i++) {
     int  dI = Wire.read();                       // read data into temporary variable for data coming In.
