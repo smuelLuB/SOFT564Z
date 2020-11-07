@@ -6,7 +6,6 @@
 #define SLAVE_ADDRESS 11
 #define CLOCK_FREQUENCY 100000
 
-
 class masterI2C {
 
   private:
