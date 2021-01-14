@@ -28,73 +28,68 @@ WiFiServer server(80);
 // Variable to store the HTTP request
 String header;
 
+// Current time
+unsigned long currentTime = millis();
+// Previous time
+unsigned long previousTime = 0;
+// Define timeout time in milliseconds (example: 2000ms = 2s)
+const long timeoutTime = 2000;
+
+
+///////// Functions //////////
+void setupWeb();
+void WebPageControls();
+void I2CHandler(); 
+
+///////////////////////////////////////////////////////////
+
+int I2CcommandCode = 0;
+//------------------------------ Command For sending over I2C ----------------------------//
+// I2CcommandCodes :
+// 0 - Drive Motors Forward - On
+// 1 - Drive Motors Forward - Off
+// 2 - Drive Motors Backward - On
+// 3 - Drive Motors Backward - Off
+// 4 - ReadSensors - On
+// 5 - ReadSensors - Off
+// 6 - Move Servo to "x" position determined by slider
+
+//------------------------------ Command For sending over I2C ----------------------------//
+// Auxiliar variables to store the current output state
+bool ForwardState = false;
+bool BackwardState = false;
+bool SensorReadState = false;
+
 // Decode HTTP GET value
 String valueString = String(5);
 int pos1 = 0;
 int pos2 = 0;
 
-// Auxiliar variables to store the current output state
-String output25State = "off";
-String output27State = "off";
-String output33State = "off";
-
-// Assign output variables to GPIO pins
 const int output25 = 25;
-const int output27 = 27;
 
-const int output33 = 33;
-
-// Current time
-unsigned long currentTime = millis();
-// Previous time
-unsigned long previousTime = 0; 
-// Define timeout time in milliseconds (example: 2000ms = 2s)
-const long timeoutTime = 2000;
-
-
-///////// Functions 
-void setupWeb();
-void WebPageControls(); 
-
-///////////////////////////////////////////////////////////
-
-//------------------------------ Command For sending over I2C ----------------------------//
-// 1 - Drive Motors Forward 
-// 2 - Drive Motors Backward
-// 3 - Turn Left (Left Motor On for 3 seconds)   - not sure
-// 4 - Turn Right (Right Motor On for 3 seconds) - not sure
-// 5 - Move Servo to "x" position determined by slider
-// 6 - Retrieve Sensor Data
-//------------------------------ Command For sending over I2C ----------------------------//
-
-int commandCode = 0; 
-
-
-masterI2C master(ESP_SCL, ESP_SDA, CLOCK_FREQUENCY); 
+masterI2C master(ESP_SCL, ESP_SDA, CLOCK_FREQUENCY);
 
 void setup() {
   Serial.begin(115200);  // start serial for output
-  setupWeb(); 
+  setupWeb();
+    // Initialize the output variables as outputs
+  pinMode(output25, OUTPUT);
+  // Set outputs to LOW
+  digitalWrite(output25, LOW);
   myservo.attach(servoPin);  // attaches the servo on the servoPin to the servo object
+  
 }
 
 void loop() {
-  int data = master.requestDataIn(SLAVE_ADDRESS,1);
+  int data = master.requestDataIn(SLAVE_ADDRESS, 1);
   Serial.println(data);
-  delay(500); // 0.5 second delay between readings 
-  WebPageControls(); 
+  delay(500); // 0.5 second delay between readings
+  
+  WebPageControls();
 
 }
 
 void setupWeb() {
-  // Initialize the output variables as outputs
-  pinMode(output25, OUTPUT);
-  pinMode(output27, OUTPUT);
-  pinMode(output33, OUTPUT);
-  // Set outputs to LOW
-  digitalWrite(output25, LOW);
-  digitalWrite(output27, LOW);
-  digitalWrite(output33, LOW);
 
   // Connect to Wi-Fi network with SSID and password
   Serial.print("Connecting to ");
@@ -113,10 +108,10 @@ void setupWeb() {
 }
 
 void WebPageControls() {
-  
-    WiFiClient client = server.available();   // Listen for incoming clients
-    
-    if (client) {                             // If a new client connects,
+
+  WiFiClient client = server.available();   // Listen for incoming clients
+
+  if (client) {                             // If a new client connects,
     currentTime = millis();
     previousTime = currentTime;
     Serial.println("New Client.");          // print a message out in the serial port
@@ -137,105 +132,131 @@ void WebPageControls() {
             client.println("Content-type:text/html");
             client.println("Connection: close");
             client.println();
-            
+
             // turns the GPIOs on and off
-            if (header.indexOf("GET /25/on") >= 0) {
-              Serial.println("GPIO 25 on");
-              output25State = "on";
-              digitalWrite(output25, HIGH);
-            } else if (header.indexOf("GET /25/off") >= 0) {
-              Serial.println("GPIO 25 off");
-              output25State = "off";
-              digitalWrite(output25, LOW);
-            } else if (header.indexOf("GET /27/on") >= 0) {
-              Serial.println("GPIO 27 on");
-              output27State = "on";
-              digitalWrite(output27, HIGH);
-            } else if (header.indexOf("GET /27/off") >= 0) {
-              Serial.println("GPIO 27 off");
-              output27State = "off";
-              digitalWrite(output27, LOW);
-            } else if (header.indexOf("GET /33/on") >= 0) {
-              Serial.println("GPIO 33 on");
-              output33State = "on";
-              digitalWrite(output33, HIGH);
-            } else if (header.indexOf("GET /33/off") >= 0) {
-              Serial.println("GPIO 33 off");
-              output33State = "off";
-              digitalWrite(output33, LOW);
+            if (header.indexOf("GET /Forward/on") >= 0) {
+              Serial.println("ForwardState on");
+              ForwardState = true;
+              if (ForwardState = true) {                            //mutally exclusive
+                BackwardState = false;
+              }
+             // I2CcommandCode = 0;
+
+            } else if (header.indexOf("GET /Forward/off") >= 0) {
+              Serial.println("ForwardState off");
+              ForwardState = false;
+              // I2CcommandCode = 1;
+
+            } else if (header.indexOf("GET /Backward/on") >= 0) {
+              Serial.println("BackwardState on");
+              BackwardState = true;
+              if (BackwardState = true) {                           //mutally exclusive
+                ForwardState = false;
+              }
+             // I2CcommandCode = 2;
+
+            } else if (header.indexOf("GET /Backward/off") >= 0) {
+              Serial.println("BackwardState off");
+              BackwardState = false;
+              I2CcommandCode = 3;
+
+            } else if (header.indexOf("GET /SensorRead/on") >= 0) {
+              Serial.println("SensorReadStateGPIO 33 on");
+              SensorReadState = true;
+             // I2CcommandCode = 4;
+
+            } else if (header.indexOf("GET /SensorRead/off") >= 0) {
+              Serial.println("SensorReadState off");
+              SensorReadState = false;
+              //I2CcommandCode = 5;
             }
-            
+
+            //Modify and Display the contents of the WebPage.
             // Display the HTML web page
             client.println("<!DOCTYPE html><html>");
             client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
             client.println("<link rel=\"icon\" href=\"data:,\">");
-            // CSS to style the on/off buttons 
+            // CSS to style the on/off buttons
             // Feel free to change the background-color and font-size attributes to fit your preferences
             client.println("<style>html { font-family: Helvetica; display: inline-block; margin: 0px auto; text-align: center;}");
-            client.println(".button { background-color: #4CAF50; border: none; color: white; padding: 16px 40px;");
-            client.println("text-decoration: none; font-size: 30px; margin: 2px; cursor: pointer;}");
-            client.println(".button2 {background-color: #555555;");
-            client.println(".button3 {background-color: #555555;}</style></head>");
+            client.println(".button { background-color: #4CAF50; border: none; color: white; padding: 20px 50px;");        //green
+            client.println("text-decoration: none; font-size: 24px; margin: 2px; cursor: pointer;}");
+            client.println(".button2 {background-color: #555555;}</style></head>");
+            //client.println(".button3 {background-color: #666666;}</style></head>");
 
             client.println("<style>body { text-align: center; font-family: \"Trebuchet MS\", Arial; margin-left:auto; margin-right:auto;}");
             client.println(".slider { width: 600px;}</style>");
             client.println("<script src=\"https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js\"></script>");
-            
+
             // Web Page Heading
             client.println("<body><h1>ESP32 Web Server</h1>");
-                     
-            // Display current state, and ON/OFF buttons for GPIO 25  
-            client.println("<p> Left Motor " + output25State + "</p>");
-            // If the output27State is on, it displays the ON button       
-            if (output25State=="on") {
-              client.println("<p><a href=\"/25/off\"><button class=\"button \">ON</button></a></p>");
+
+            // Display current state, and ON/OFF buttons for GPIO 25
+            //client.println("<p> Motors Forward </p>");
+            // If the ForwardState is true, it displays the Green button
+            if (ForwardState == true) {
+              client.println("<p><a href=\"/Forward/off\"><button class=\"button \">FORWARD</button></a></p>");
             } else {
-              client.println("<p><a href=\"/25/on\"><button class=\"button button2 button3\">OFF</button></a></p>");
+              client.println("<p><a href=\"/Forward/on\"><button class=\"button button2\">FORWARD</button></a></p>");
             }
-            client.println("</body></html>");                       //is this neccesary here? 
-            // Display current state, and ON/OFF buttons for GPIO 27  
-            client.println("<p> Right Motor " + output27State + "</p>");
-            // If the output27State is on, it displays the ON button       
-            if (output27State=="on") {
-              client.println("<p><a href=\"/27/off\"><button class=\"button \">ON</button></a></p>");
+            client.println("</body></html>");                      
+
+            // Display current state, and ON/OFF buttons for GPIO 27
+            //client.println("<p> Motors Backward </p>");
+            // If the BackwardState is true, it displays the Green button
+            if (BackwardState == true) {
+              client.println("<p><a href=\"/Backward/off\"><button class=\"button \">BACKWARD</button></a></p>");
             } else {
-              client.println("<p><a href=\"/27/on\"><button class=\"button button2 button3\">OFF</button></a></p>");
+              client.println("<p><a href=\"/Backward/on\"><button class=\"button button2 \">BACKWARD</button></a></p>");
             }
             client.println("</body></html>");
 
-            // Display current state, and ON/OFF buttons for GPIO 25  
-            client.println("<p> Third Button " + output33State + "</p>");
-            // If the output27State is on, it displays the ON button       
-            if (output33State=="on") {
-              client.println("<p><a href=\"/33/off\"><button class=\"button \">ON</button></a></p>");
-            } else {
-              client.println("<p><a href=\"/33/on\"><button class=\"button button2 button3\">OFF</button></a></p>");
-            }
+            client.println("<p> Servo Position: <span id=\"servoPos\"></span></p>");
+            client.println("<input type=\"range\" min=\"0\" max=\"180\" class=\"slider\" id=\"servoSlider\" onchange=\"servo(this.value)\" value=\"" + valueString + "\"/>");
 
-            client.println("</body></html>");
-
-            client.println("<p>Position: <span id=\"servoPos\"></span></p>");          
-            client.println("<input type=\"range\" min=\"0\" max=\"180\" class=\"slider\" id=\"servoSlider\" onchange=\"servo(this.value)\" value=\""+valueString+"\"/>");
-            
             client.println("<script>var slider = document.getElementById(\"servoSlider\");");
             client.println("var servoP = document.getElementById(\"servoPos\"); servoP.innerHTML = slider.value;");
             client.println("slider.oninput = function() { slider.value = this.value; servoP.innerHTML = this.value; }");
             client.println("$.ajaxSetup({timeout:1000}); function servo(pos) { ");
             client.println("$.get(\"/?value=\" + pos + \"&\"); {Connection: close};}</script>");
-           
-            client.println("</body></html>");  
-            
+
+            client.println("</body></html>");
+
             //GET /?value=180& HTTP/1.1
-            if(header.indexOf("GET /?value=")>=0) {
+            if (header.indexOf("GET /?value=") >= 0) {
               pos1 = header.indexOf('=');
               pos2 = header.indexOf('&');
-              valueString = header.substring(pos1+1, pos2);
-              
+              valueString = header.substring(pos1 + 1, pos2);
+
               //Rotate the servo
-              myservo.write(valueString.toInt());
-              Serial.println(valueString); 
-            }   
+              myservo.write(valueString.toInt()); //convert string to integer. 
+              Serial.println(valueString);
+            }
             
+            // Display current state, and ON/OFF buttons for GPIO 25
+            //client.println("<p> Read Sensors </p>");
+            // If the SensorReadState is true, it displays the Green button
+            if (SensorReadState == true) {
+              client.println("<p><a href=\"/SensorRead/off\"><button class=\"button \">READ SENSORS</button></a></p>");
+            } else {
+              client.println("<p><a href=\"/SensorRead/on\"><button class=\"button button2 \">READ SENSORS</button></a></p>");
+            }
+
+            client.println("</body></html>");
+            String DistanceCM = "10";
+            String TempValue = "25";
+            String HumValue = "98";
+            
+            // Display current Sensor Values 
+            if (SensorReadState == true) {
+            client.println("<p> Distance CM: " + DistanceCM + "</p>");
+            client.println("<p> Temperature: " + TempValue + "</p>");
+            client.println("<p> Humidity: " + HumValue + "</p>");
+            }
+
+            client.println("</body></html>");
+            
+
             // The HTTP response ends with another blank line
             client.println();
             // Break out of the while loop
@@ -255,4 +276,11 @@ void WebPageControls() {
     Serial.println("Client disconnected.");
     Serial.println("");
   }
-}  
+}
+
+void I2CHandler() { 
+
+   
+    
+
+}
