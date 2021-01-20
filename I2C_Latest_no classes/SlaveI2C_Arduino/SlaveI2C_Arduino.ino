@@ -18,12 +18,6 @@ typedef struct {
 CommandStruct commandCode;
 DataStruct SensorData;   // Global structure for storing sensor data.
 
-// unsigned short DataIn = 0;
-//unsigned short DataOut = 0;
-
-//int DataOut[];   //global buffer for data going out.
-
-
 void setup() {
   slaveSetup();
   Serial.begin(115200);
@@ -53,16 +47,6 @@ void slaveWriter()  {
   Wire.write(dOut, 3);
 }
 /*
-  void slaveReader() {
-  int numBytes = Wire.available();
-  byte dIn[numBytes];                   // address, number of bytes wish to receive and then a stop condition to release I2C bus.
-  Wire.readBytes(dIn, numBytes);
-  commandCode.motorDir    = dIn[0];
-  commandCode.readSensors = dIn[1];
-  commandCode.servoVal    = dIn[2];
-  }
-*/
-
 void slaveReader() {
 
   int idx = 0;
@@ -78,6 +62,18 @@ void slaveReader() {
   commandCode.readSensors = dIn[1];
   commandCode.servoVal    = dIn[2];
 }
+*/
+
+  void slaveReader() {
+  int numBytes = Wire.available();
+  byte dIn[numBytes];                   // address, number of bytes wish to receive and then a stop condition to release I2C bus.
+  Wire.readBytes(dIn, numBytes);
+  commandCode.motorDir    = dIn[0];
+  commandCode.readSensors = dIn[1];
+  commandCode.servoVal    = dIn[2];
+  }
+
+
 
 
 
@@ -86,6 +82,7 @@ void slaveReader() {
   int numBytes = Wire.available();
   byte dIn[numBytes];                   // address, number of bytes wish to receive and then a stop condition to release I2C bus.
   Wire.readBytes(dIn, numBytes);
+
   commandStruct.motorDir    = dIn[0];
   commandStruct.readSensors = dIn[1];
   commandStruct.servoVal    = dIn[2];
@@ -94,6 +91,7 @@ void slaveReader() {
 
 /*
   void slaveReader() {
+
   int numBytes = Wire.available();
   Serial.println(numBytes);
   // unsigned short dIn = 0;
@@ -102,5 +100,6 @@ void slaveReader() {
     c[i] = Wire.read();
     Serial.println(c[i]);
   }
+
   }
 */

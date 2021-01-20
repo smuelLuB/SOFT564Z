@@ -5,10 +5,6 @@
 #define ESP_SDA 21
 #define SLAVE_ADDRESS 11
 
-//unsigned short DataIn = 0;
-byte dOut[3];
-byte DataIn[3];
-
 typedef struct {
   int motorDir;
   int readSensors;
@@ -32,9 +28,6 @@ void setup() {
   commandCode.readSensors = 0x1;
   commandCode.servoVal = 180;
 
-  dOut [0] = commandCode.motorDir;
-  dOut [1] = commandCode.readSensors;
-  dOut [2] = commandCode.servoVal;
 }
 
 void loop() {
@@ -42,7 +35,7 @@ void loop() {
 
   masterWriter();
   delay(1000);
-  //masterReader(3);
+  masterReader(3);
   delay(1000); // 1 second delay between readings
   Serial.println(SensorData.dist);
   Serial.println(SensorData.temp);
@@ -53,11 +46,11 @@ void loop() {
 // handles the writing of data via I2C
 void masterWriter() {
   int numBytes = 3;
-  /*byte dOut[numBytes];
-    dOut [0] = commandCode.motorDir;
-    dOut [1] = commandCode.readSensors;
-    dOut [2] =commandCode.servoVal;
-  */
+  byte dOut[numBytes];
+  dOut [0] = commandCode.motorDir;
+  dOut [1] = commandCode.readSensors;
+  dOut [2] = commandCode.servoVal;
+
   Wire.beginTransmission(SLAVE_ADDRESS);
   int numBytesSent = Wire.write(dOut, numBytes);        //send Data to slave, number of bytes sent=numBytes.
   byte result = Wire.endTransmission();                 // if zero returned then tranmission was successful.
@@ -68,12 +61,12 @@ void masterWriter() {
 void masterReader(int numBytes) {
   byte dIn[numBytes];
   int bytesRec = Wire.requestFrom(SLAVE_ADDRESS, numBytes, true);                    // address, number of bytes wish to receive and then a stop condition to release I2C bus.
-  Wire.readBytes(dIn, bytesRec);
+  Wire.readBytes(dIn, numBytes);
   if (bytesRec != numBytes) {
     Serial.println("Error: Master Didnt reccieve all bytes");
   }
-  SensorData.dist = dIn[0];
-  SensorData.temp = dIn[1];
+  SensorData.dist  = dIn[0];
+  SensorData.temp  = dIn[1];
   SensorData.humid = dIn[2];
 }
 
