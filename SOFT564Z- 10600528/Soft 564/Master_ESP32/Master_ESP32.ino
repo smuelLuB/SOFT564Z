@@ -2,48 +2,48 @@
 #include <WiFi.h>"
 #include "string.h"
 
-/// I2C ///
+/// Define the Pins used for I2C communication ///
 #define ESP_SCL 22
 #define ESP_SDA 21
 #define SLAVE_ADDRESS 11
 
 //////////////////////////////////////////////////////// web page //////////////////////////////////////////////
-// Network credentials
+//Home Network credentials
 const char* ssid     = "VM1947422";
 const char* password = "kv7skFkdcms4";
 
 // IP address: 192.168.0.32
 
-// Set web server port number to 80
+// Set the web server port number to 80
 WiFiServer server(80);
 
 // Variable to store the HTTP request
-String header;
+String httpRequest;
 
-// Current time
-unsigned long currentTime = millis();
-// Previous time
-unsigned long previousTime = 0;
-// Define timeout time in milliseconds (example: 2000ms = 2s)
-const long timeoutTime = 2000;
+unsigned long currentTime = millis(); // Current time
+unsigned long previousTime = 0;       // Previous time
+const long timeoutTime = 2000;        // Define timeout time in milliseconds (2000ms = 2s)
 
-// Decode HTTP GET value
-String valueString = String(5);
-int pos1 = 0;
-int pos2 = 0;
+// String Variable for storing the servo data as a string
+String servoValueString = String(5);
 
-// Variables to store the current output state
+// Variables to store the current command states
 bool ForwardState = false;
 bool BackwardState = false;
 bool SensorReadState = false;
 
-unsigned int ServoVal = 0;
+// Variables to store the current old command states
+bool oldForwardState = false;
+bool oldBackwardState = false;
+bool oldSensorReadState = false;
+
+int redLED = 25; 
+
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 typedef struct {
   int motorDir;
   int readSensors;
-  int servoChange;
   int servoVal;
 } CommandStruct;
 
@@ -53,22 +53,20 @@ typedef struct {
   byte humid;
 } DataStruct;
 
-CommandStruct commandCode;
+CommandStruct commandCode = {0}; 
 DataStruct SensorData;
 
 void setup() {
   Serial.begin(115200);  // start serial for output
   Wire.begin();          //Begin I2C.
+  pinMode(redLED, OUTPUT);
+  digitalWrite(redLED, LOW);
 
   setupWeb();
 
-  /*commandCode.motorDir = 2;
-  commandCode.readSensors = 0;
-  commandCode.servoVal = 60;
-  */
+  // Initialise the command Code values to zero. 
   commandCode.motorDir = 0;
   commandCode.readSensors = 0;
-  commandCode.servoChange = 0;
   commandCode.servoVal = 0;
 
 }
@@ -78,15 +76,25 @@ void loop() {
   WebPageControls();
   commandCodeHandler();
 
-  
-  masterWriter();
-  delay(250);   // delay between readings
-  masterReader(4);
-  delay(200);
-  Serial.println(commandCode.servoVal);
-  Serial.println(SensorData.dist);
-  Serial.println(SensorData.temp);
-  Serial.println(SensorData.humid);
+  if(ForwardState != oldForwardState){
+    masterWriter();
+  }
+
+  if(BackwardState != oldBackwardState){
+    masterWriter();
+  }
+
+  if(SensorReadState != oldSensorReadState){
+    masterWriter();
+  }
+  if(SensorReadState == true) {                   // If the sensors are required to be read
+    masterReader(3);                              // retrieve the relevant sensor data to update the webpage. 
+  }
+
+  oldForwardState = ForwardState;
+  oldBackwardState = BackwardState;
+  oldSensorReadState = SensorReadState;
+
 }
 
 // handles the writing of data via I2C
@@ -100,9 +108,7 @@ void masterWriter() {
   Wire.beginTransmission(SLAVE_ADDRESS);
   int numBytesSent = Wire.write(dOut, numBytes);        //send Data to slave, number of bytes sent=numBytes.
   byte result = Wire.endTransmission();                 // if zero returned then tranmission was successful.
-  //Serial.println(numBytesSent);
-  //Serial.println(result);
-   
+  
 }
 
 void masterReader(int numBytes) {
@@ -111,6 +117,7 @@ void masterReader(int numBytes) {
   Wire.readBytes(dIn, bytesRec);
   if (bytesRec != numBytes) {
     Serial.println("Error: Master Didnt reccieve all bytes");
+    digitalWrite(redLED, LOW);
   }
   SensorData.dist  = dIn[0];
   SensorData.temp  = dIn[1];
@@ -119,9 +126,7 @@ void masterReader(int numBytes) {
 
 void commandCodeHandler() {
 
-  //commandCode &= 0;                        //reset the code, ready to be updated.
-
-  //check the states so know what to send.
+    //check the states so know what to send.
   if (ForwardState == true && BackwardState == false) {
     commandCode.motorDir = 0x2;                                           // Command code for turning motors in forward direction
   }
@@ -139,7 +144,7 @@ void commandCodeHandler() {
 }
 
 
-///////////////////////////////////// WEB PAGE //////////////////////////////////////////////////////////////
+///////////////////////////////////// CONFIGURE WEB SERVER //////////////////////////////////////////////////////////////
 
 void setupWeb() {
 
@@ -150,12 +155,12 @@ void setupWeb() {
   Serial.print("Connecting to ");
   Serial.println(ssid);
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED) {                         // While the network isnt connected. 
     delay(500);
     Serial.print(".");
     currentTime = millis();
-    if(currentTime - previousTime >= timeoutTime) {
-      WiFi.begin(ssid, password);     //try again to  connect 
+    if(currentTime - previousTime >= timeoutTime) {               //if the network connection hasnt been established after timeout, retry. 
+      WiFi.begin(ssid, password);                                 // try again to connect 
     }
   }
   // Print local IP address and start web server
@@ -163,29 +168,31 @@ void setupWeb() {
   Serial.println("WiFi connected.");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
-  //previousTime = 0;              //reset value to zero. 
+  previousTime = 0;              //reset value to zero. 
   server.begin();
 }
 
+
+
+//***** Handles Client requests and server receiving and sending response *****// 
 void WebPageControls() {
 
   WiFiClient client = server.available();   // Listen for incoming clients
 
-  if (client) {                             // If a new client connects,
+  if (client) {                             // If client connects,
     currentTime = millis();
     previousTime = currentTime;
-    //Serial.println("Client Request.");          // print a message out in the serial port
-    String currentLine = "";                // make a String to hold incoming data from the client
+    String currentLine = "";                // String to hold incoming data from client
     while (client.connected() && currentTime - previousTime <= timeoutTime) {  // loop while the client's connected
       currentTime = millis();
       if (client.available()) {             // if there's bytes to read from the client,
-        char c = client.read();             // read a byte, then
-        header += c;
+        char c = client.read();             // read a byte
+        httpRequest += c;
         if (c == '\n') {                    // if the byte is a newline character
           // if the current line is blank, you got two newline characters in a row.
           // that's the end of the client HTTP request, so send a response:
           if (currentLine.length() == 0) {
-            // HTTP headers always start with a response code (e.g. HTTP/1.1 200 OK)
+            // HTTP httpRequests always start with a response code (e.g. HTTP/1.1 200 OK)
             // and a content-type so the client knows what's coming, then a blank line:
             client.println("HTTP/1.1 200 OK");
             client.println("Content-type:text/html");
@@ -193,33 +200,30 @@ void WebPageControls() {
             client.println();
 
             // turns the GPIOs on and off
-            if (header.indexOf("GET /Forward/on") >= 0) {
+            if (httpRequest.indexOf("GET /Forward/on") >= 0) {
               Serial.println("ForwardState on");
-              ForwardState = true;
-              if (ForwardState = true) {                            //mutally exclusive
-                BackwardState = false;
-              }
+              ForwardState = true; //mutally exclusive
+              BackwardState = false;
 
-            } else if (header.indexOf("GET /Forward/off") >= 0) {
+            } else if (httpRequest.indexOf("GET /Forward/off") >= 0) {
               Serial.println("ForwardState off");
               ForwardState = false;
 
-            } else if (header.indexOf("GET /Backward/on") >= 0) {
+            } else if (httpRequest.indexOf("GET /Backward/on") >= 0) {
               Serial.println("BackwardState on");
-              BackwardState = true;
-              if (BackwardState = true) {                           //mutally exclusive
-                ForwardState = false;
-              }
-
-            } else if (header.indexOf("GET /Backward/off") >= 0) {
+              BackwardState = true; //mutally exclusive                   
+              ForwardState = false;
+              
+            } else if (httpRequest.indexOf("GET /Backward/off") >= 0) {
               Serial.println("BackwardState off");
               BackwardState = false;
 
-            } else if (header.indexOf("GET /SensorRead/on") >= 0) {
+            } else if (httpRequest.indexOf("GET /SensorRead/on") >= 0) {
               Serial.println("SensorReadState on");
               SensorReadState = true;
+              masterReader(3);                       //read current sensors values ready to be displayed
 
-            } else if (header.indexOf("GET /SensorRead/off") >= 0) {
+            } else if (httpRequest.indexOf("GET /SensorRead/off") >= 0) {
               Serial.println("SensorReadState off");
               SensorReadState = false;
             }
@@ -228,9 +232,10 @@ void WebPageControls() {
             // Display the HTML web page
             client.println("<!DOCTYPE html><html>");
             client.println("<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">");
-
+            
+            // If the sensor data has been requested. update the webpage every 10 seconds. 
             if(SensorReadState == true) {
-            client.println("<meta http-equiv=\"refresh\" content=\"5\">");
+            client.println("<meta http-equiv=\"refresh\" content=\"10\">");
             }
             
             client.println("<link rel=\"icon\" href=\"data:,\">");
@@ -245,10 +250,10 @@ void WebPageControls() {
             client.println("<script src=\"https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js\"></script>");
 
             // Web Page Heading
-            client.println("<body><h1>ESP32 Web Server</h1>");
+            client.println("<body><h1>Pipe Inspection Robot</h1>");
 
             // Display Forward state
-            // If the ForwardState is true, it displays the Green button
+            // If the ForwardState is true, it displays the Green button.
             if (ForwardState == true) {
               client.println("<p><a href=\"/Forward/off\"><button class=\"button \">FORWARD</button></a></p>");
             } else {
@@ -256,7 +261,7 @@ void WebPageControls() {
             }
 
             // Display Backward state 
-            // If the BackwardState is true, it displays the Green button
+            // If the BackwardState is true, it displays the Green button.
             if (BackwardState == true) {
               client.println("<p><a href=\"/Backward/off\"><button class=\"button \">BACKWARD</button></a></p>");
             } else {
@@ -264,7 +269,7 @@ void WebPageControls() {
             }
             //Servo Position and slider 
             client.println("<p> Servo Position: <span id=\"servoPos\"></span></p>");
-            client.println("<input type=\"range\" min=\"0\" max=\"180\" class=\"slider\" id=\"servoSlider\" onchange=\"servo(this.value)\" value=\"" + valueString + "\"/>");
+            client.println("<input type=\"range\" min=\"0\" max=\"180\" class=\"slider\" id=\"servoSlider\" onchange=\"servo(this.value)\" value=\"" + servoValueString + "\"/>");
 
             client.println("<script>var slider = document.getElementById(\"servoSlider\");");
             client.println("var servoP = document.getElementById(\"servoPos\"); servoP.innerHTML = slider.value;");
@@ -273,34 +278,30 @@ void WebPageControls() {
             client.println("$.get(\"/?value=\" + pos + \"&\"); {Connection: close};}</script>");
            
             //GET /?value=180& HTTP/1.1
-            if (header.indexOf("GET /?value=") >= 0) {
-              pos1 = header.indexOf('=');
-              pos2 = header.indexOf('&');
-              valueString = header.substring(pos1 + 1, pos2);
-
-              commandCode.servoVal = valueString.toInt();
-              //client.println("<p><a href=\"/GET /?value=\"><slider class=\"slider \"</a></p>");
+            if (httpRequest.indexOf("GET /?value=") >= 0) {
+              int pos1 = httpRequest.indexOf('=');
+              int pos2 = httpRequest.indexOf('&');
+              servoValueString = httpRequest.substring(pos1 + 1, pos2);       //Between these two index strings is a servo position value. 
+              commandCode.servoVal = servoValueString.toInt();
+              masterWriter();           // send servo command for fast response.
             }
 
             // Display read sensor state            
-            // If the SensorReadState is true, it displays the Green button
+            // If the SensorReadState is true, it displays the Green button.
             if (SensorReadState == true) {
               client.println("<p><a href=\"/SensorRead/off\"><button class=\"button \">READ SENSORS</button></a></p>");
             } else {
               client.println("<p><a href=\"/SensorRead/on\"><button class=\"button button2 \">READ SENSORS</button></a></p>");
-            }
-
-            //client.println("</body></html>");
-            
+            }          
      
             //Display current Sensor Values
             if (SensorReadState == true) {
-              client.println("<p> Distance CM: " + String(SensorData.dist) + "</p>");
-              client.println("<p> Temperature: " + String(SensorData.temp) + "</p>");
-              client.println("<p> Humidity: " + String(SensorData.humid) + "</p>");
+              client.println("<p> Distance (cm): " + String(SensorData.dist) + "</p>");
+              client.println("<p> Temperature (c): " + String(SensorData.temp) + "</p>");
+              client.println("<p> Humidity (%): " + String(SensorData.humid) + "</p>");
             }
+
             client.println("</body></html>");
-            
             
             // The HTTP response ends with another blank line
             client.println();
@@ -314,14 +315,29 @@ void WebPageControls() {
         }
       }
     }
-    // Clear the header variable
-    header = "";
+    // Clear the httpRequest variable
+    httpRequest = "";
     // Close the connection
     client.stop();
     Serial.println("Client disconnected.");
     Serial.println("");
   }
 }
+
+/*
+// Testing the command codes 
+void testCC() {  
+   cnt++;
+   if (cnt == 12){
+    ForwardState = !ForwardState; 
+    SensorReadState = !SensorReadState; 
+    cnt =0;   //reset count
+
+   Serial.println("State Change");
+   }
+   Serial.println(commandCode, BIN);
+}
+*/
 
 /*
   byte MasterReader(int numBytes) {
